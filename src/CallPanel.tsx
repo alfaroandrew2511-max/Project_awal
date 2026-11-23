@@ -177,46 +177,12 @@ export function CallPanel({ callRoomId, callType, nickname, peerId, isHost, onLe
     };
 
     const handleSignal = async (signal: SignalRow) => {
-      if (signal.room_id !== callRoomId || signal.sender_id !== peerId) return;
-      try {
-        if (signal.signal_type === "ready" && isHost) {
-          await startOffer();
-        } else if (signal.signal_type === "offer" && !isHost && signal.payload) {
-          await pc.setRemoteDescription(signal.payload as RTCSessionDescriptionInit);
-          await flushIce();
-          const answer = await pc.createAnswer();
-          await pc.setLocalDescription(answer);
-          await sendSignal("answer", answer);
-        } else if (signal.signal_type === "answer" && isHost && signal.payload) {
-          await pc.setRemoteDescription(signal.payload as RTCSessionDescriptionInit);
-          await flushIce();
-        } else if (signal.signal_type === "ice" && signal.payload) {
-          const candidate = signal.payload as RTCIceCandidateInit;
-          if (pc.remoteDescription) {
-            try { await pc.addIceCandidate(candidate); } catch { /* Ignore stale ICE candidates. */ }
-          } else {
-            pendingIceRef.current.push(candidate);
-          }
-        } else if (signal.signal_type === "hangup" && !endedRef.current) {
-          setConnectionLabel("Call ended");
-          endedRef.current = true;
-          onLeave();
-        }
-      } catch {
-        if (!disposed) setError("Negosiasi panggilan gagal. Coba keluar lalu undang kembali.");
-      }
-    };
-
-    const handleSignal = async (signal: SignalRow) => {
       if (!signal.id || processedSignalsRef.current.has(signal.id)) return;
       if (signal.room_id !== callRoomId || signal.sender_id !== peerId) return;
       processedSignalsRef.current.add(signal.id);
       try {
-        if (signal.signal_type === "ready" && isHost && !offerStartedRef.current) {
-          offerStartedRef.current = true;
-          const offer = await pc.createOffer();
-          await pc.setLocalDescription(offer);
-          await sendSignal("offer", offer);
+        if (signal.signal_type === "ready" && isHost) {
+          await startOffer();
         } else if (signal.signal_type === "offer" && !isHost && signal.payload) {
           await pc.setRemoteDescription(signal.payload as RTCSessionDescriptionInit);
           await flushIce();
