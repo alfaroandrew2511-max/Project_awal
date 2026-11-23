@@ -45,11 +45,12 @@ export default function App() {
   const selectedCountry = countries.find((item) => item.id === country) ?? countries[0];
 
   useEffect(() => {
-    if (!firebaseReady || !auth) return;
-    const unsubscribe = onAuthStateChanged(auth, async (user) => {
+    const firebaseAuth = auth;
+    if (!firebaseReady || !firebaseAuth) return;
+    const unsubscribe = onAuthStateChanged(firebaseAuth, async (user) => {
       if (user) setUid(user.uid);
       else {
-        try { await signInAnonymously(auth); }
+        try { await signInAnonymously(firebaseAuth); }
         catch { setNotice("Autentikasi belum aktif. Periksa konfigurasi Firebase."); }
       }
     });
