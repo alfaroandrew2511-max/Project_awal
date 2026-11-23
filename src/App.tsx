@@ -47,10 +47,11 @@ export default function App() {
   const selectedCountry = countries.find((item) => item.id === country) ?? countries[0];
 
   useEffect(() => {
-    if (!supabase) return;
+    const client = supabase;
+    if (!client) return;
     let mounted = true;
     const start = async () => {
-      const { data, error } = await supabase.auth.getSession();
+      const { data, error } = await client.auth.getSession();
       if (error) {
         if (mounted) setNotice("Tidak dapat memeriksa sesi. Muat ulang halaman.");
         return;
@@ -59,7 +60,7 @@ export default function App() {
         if (mounted) { setUid(data.session.user.id); setAuthReady(true); }
         return;
       }
-      const { data: signInData, error: signInError } = await supabase.auth.signInAnonymously();
+      const { data: signInData, error: signInError } = await client.auth.signInAnonymously();
       if (signInError) {
         if (mounted) setNotice("Aktifkan Anonymous Sign-Ins di Supabase Authentication untuk menghubungkan chat.");
         return;
@@ -70,7 +71,7 @@ export default function App() {
       }
     };
     void start();
-    const { data: listener } = supabase.auth.onAuthStateChange((_event, session) => {
+    const { data: listener } = client.auth.onAuthStateChange((_event, session) => {
       if (!mounted) return;
       if (session?.user) { setUid(session.user.id); setAuthReady(true); }
       else { setUid(""); setAuthReady(false); }
@@ -82,7 +83,8 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    if (!supabase || !uid) return;
+    const client = supabase;
+    if (!client || !uid) return;
     let active = true;
     let channel: RealtimeChannel | null = null;
     setConnected(false);
@@ -102,7 +104,7 @@ export default function App() {
     };
     void loadMessages();
 
-    channel = supabase.channel("drewmingle:" + activeRoom, {
+    channel = client.channel("drewmingle:" + activeRoom, {
       config: { presence: { key: uid } },
     });
     channel
@@ -126,7 +128,7 @@ export default function App() {
 
     return () => {
       active = false;
-      if (channel && supabase) void supabase.removeChannel(channel);
+      if (channel && supabase) void client.removeChannel(channel);
     };
   }, [uid, activeRoom, nickname]);
 
