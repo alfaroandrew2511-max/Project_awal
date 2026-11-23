@@ -60,7 +60,8 @@ export function CallPanel({ callRoomId, callType, nickname, onLeave }: CallPanel
         if (cancelled) return;
         currentRoom = new Room({ adaptiveStream: true, dynacast: true });
         currentRoom.on(RoomEvent.TrackSubscribed, (track, _publication, participant) => {
-          setRemoteMedia((items) => items.some((item) => item.id === track.sid) ? items : [...items, { id: track.sid, track, name: participant.name || "Participant" }]);
+          const trackId = track.sid ?? `${participant.identity}-${track.kind}`;
+          setRemoteMedia((items) => items.some((item) => item.id === trackId) ? items : [...items, { id: trackId, track, name: participant.name || "Participant" }]);
         });
         currentRoom.on(RoomEvent.TrackUnsubscribed, (track) => {
           setRemoteMedia((items) => items.filter((item) => item.id !== track.sid));
