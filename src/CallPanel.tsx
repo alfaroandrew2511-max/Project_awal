@@ -79,7 +79,9 @@ export function CallPanel({ callRoomId, callType, nickname, peerId, isHost, onLe
           setConnectionLabel("Invitation declined");
         }
       })
-      .subscribe();
+      .subscribe((status) => {
+        if (status === "SUBSCRIBED") void checkAccepted();
+      });
     return () => {
       active = false;
       void client.removeChannel(channel);
