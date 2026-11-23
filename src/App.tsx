@@ -6,7 +6,7 @@ import {
 } from "lucide-react";
 import { onAuthStateChanged, signInAnonymously } from "firebase/auth";
 import {
-  onChildAdded, onValue, onDisconnect, push, ref, remove, serverTimestamp, set
+  onChildAdded, onValue, onDisconnect, push, ref, remove, set
 } from "firebase/database";
 import { auth, database, firebaseReady } from "./firebase";
 
