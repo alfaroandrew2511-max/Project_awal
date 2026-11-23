@@ -161,13 +161,23 @@ export function CallPanel({ callRoomId, callType, nickname, peerId, isHost, onLe
             } else {
               pendingIceRef.current.push(candidate);
             }
-          } else if (signal.signal_type === "hangup") {
+          } else if (signal.signal_type === "hangup" && !endedRef.current) {
             setConnectionLabel("Call ended");
             endedRef.current = true;
             onLeave();
           }
         } catch {
           if (!disposed) setError("Negosiasi panggilan gagal. Coba keluar lalu undang kembali.");
+        }
+      })
+      .on("postgres_changes", {
+        event: "UPDATE", schema: "public", table: "drewmingle_call_rooms",
+        filter: "id=eq." + callRoomId,
+      }, (payload) => {
+        const updatedRoom = payload.new as { status: string };
+        if (updatedRoom.status === "ended" && !endedRef.current) {
+          endedRef.current = true;
+          onLeave();
         }
       })
       .subscribe((status) => {
