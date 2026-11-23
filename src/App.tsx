@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import {
   ArrowUpRight, Globe2, Hash, MessageCircle, Send, ShieldCheck,
-  Users, Wifi, X, Flag, Sparkles, ChevronDown, CircleHelp, Moon, Sun, Reply, Bell, BellRing
+  Users, Wifi, X, Flag, Sparkles, ChevronDown, CircleHelp, Moon, Sun, Reply, BellRing
 } from "lucide-react";
 import type { RealtimeChannel } from "@supabase/supabase-js";
 import { supabase, supabaseReady } from "./supabase";
