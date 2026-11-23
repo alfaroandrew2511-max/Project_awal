@@ -4,14 +4,11 @@ import {
   ArrowUpRight, Globe2, Hash, MessageCircle, Send, ShieldCheck,
   Users, Wifi, X, Flag, Sparkles, ChevronDown, CircleHelp
 } from "lucide-react";
-import { onAuthStateChanged, signInAnonymously } from "firebase/auth";
-import {
-  onChildAdded, onValue, onDisconnect, push, ref, remove, set
-} from "firebase/database";
-import { auth, database, firebaseReady } from "./firebase";
+import type { RealtimeChannel } from "@supabase/supabase-js";
+import { supabase, supabaseReady } from "./supabase";
 
 type Country = { id: string; label: string; flag: string };
-type ChatMessage = { id: string; uid: string; name: string; text: string; createdAt: number };
+type ChatMessage = { id: string; user_id: string; nickname: string; content: string; created_at: string };
 const countries: Country[] = [
   { id: "global", label: "Global", flag: "🌐" },
   { id: "id", label: "Indonesia", flag: "🇮🇩" },
@@ -23,10 +20,14 @@ const countries: Country[] = [
   { id: "br", label: "Brazil", flag: "🇧🇷" },
 ];
 const topics = ["General", "Music", "Games", "Technology", "Movies", "Language exchange"];
-const safeWords = ["bodoh", "anjing", "kontol", "memek", "bangsat", "bitch", "fuck", "nigger"];
-const makeName = () => ["Misty", "Cosmic", "Quiet", "Nova", "Pixel", "Sunny", "Echo"][Math.floor(Math.random() * 7)] + " " + Math.floor(100 + Math.random() * 900);
-const roomId = (country: string, topic: string) => country + "_" + topic.toLowerCase().replaceAll(" ", "_");
+const blockedWords = ["kontol", "memek", "anjing", "bangsat", "nigger", "fuck", "bitch"];
+const makeName = () =>
+  ["Misty", "Cosmic", "Quiet", "Nova", "Pixel", "Sunny", "Echo"][Math.floor(Math.random() * 7)] +
+  " " + Math.floor(100 + Math.random() * 900);
+const roomId = (country: string, topic: string) =>
+  country + "_" + topic.toLowerCase().replaceAll(" ", "_");
 const cleanText = (value: string) => value.replace(/[<>]/g, "").trim();
+const isBlocked = (value: string) => blockedWords.some((word) => value.toLowerCase().includes(word));
 
 export default function App() {
   const [nickname, setNickname] = useState(makeName);
@@ -40,53 +41,92 @@ export default function App() {
   const [notice, setNotice] = useState("");
   const [showSafety, setShowSafety] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [authReady, setAuthReady] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
   const activeRoom = useMemo(() => roomId(country, topic), [country, topic]);
   const selectedCountry = countries.find((item) => item.id === country) ?? countries[0];
 
   useEffect(() => {
-    const firebaseAuth = auth;
-    if (!firebaseReady || !firebaseAuth) return;
-    const unsubscribe = onAuthStateChanged(firebaseAuth, async (user) => {
-      if (user) setUid(user.uid);
-      else {
-        try { await signInAnonymously(firebaseAuth); }
-        catch { setNotice("Autentikasi belum aktif. Periksa konfigurasi Firebase."); }
+    if (!supabase) return;
+    let mounted = true;
+    const start = async () => {
+      const { data, error } = await supabase.auth.getSession();
+      if (error) {
+        if (mounted) setNotice("Tidak dapat memeriksa sesi. Muat ulang halaman.");
+        return;
       }
+      if (data.session?.user) {
+        if (mounted) { setUid(data.session.user.id); setAuthReady(true); }
+        return;
+      }
+      const { data: signInData, error: signInError } = await supabase.auth.signInAnonymously();
+      if (signInError) {
+        if (mounted) setNotice("Aktifkan Anonymous Sign-Ins di Supabase Authentication untuk menghubungkan chat.");
+        return;
+      }
+      if (mounted && signInData.user) {
+        setUid(signInData.user.id);
+        setAuthReady(true);
+      }
+    };
+    void start();
+    const { data: listener } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (!mounted) return;
+      if (session?.user) { setUid(session.user.id); setAuthReady(true); }
+      else { setUid(""); setAuthReady(false); }
     });
-    return unsubscribe;
+    return () => {
+      mounted = false;
+      listener.subscription.unsubscribe();
+    };
   }, []);
 
   useEffect(() => {
-    if (!uid || !database) return;
+    if (!supabase || !uid) return;
+    let active = true;
+    let channel: RealtimeChannel | null = null;
     setConnected(false);
     setMessages([]);
-    const roomRef = ref(database, `rooms/${activeRoom}`);
-    const messagesRef = ref(database, `rooms/${activeRoom}/messages`);
-    const presenceRef = ref(database, `rooms/${activeRoom}/presence/${uid}`);
-    const unsubMessages = onChildAdded(messagesRef, (snapshot) => {
-      const value = snapshot.val();
-      if (!value) return;
-      setMessages((current) => current.some((item) => item.id === snapshot.key) ? current : [...current, {
-        id: snapshot.key ?? crypto.randomUUID(),
-        uid: value.uid,
-        name: value.name,
-        text: value.text,
-        createdAt: value.createdAt ?? Date.now(),
-      }].slice(-100));
+    setOnline(0);
+
+    const loadMessages = async () => {
+      const { data, error } = await supabase
+        .from("drewmingle_messages")
+        .select("id,user_id,nickname,content,created_at")
+        .eq("room_slug", activeRoom)
+        .order("created_at", { ascending: true })
+        .limit(100);
+      if (!active) return;
+      if (error) setNotice("Pesan belum dapat dimuat. Periksa pengaturan Authentication dan RLS.");
+      else setMessages((data ?? []) as ChatMessage[]);
+    };
+    void loadMessages();
+
+    channel = supabase.channel("drewmingle:" + activeRoom, {
+      config: { presence: { key: uid } },
     });
-    const unsubPresence = onValue(ref(database, `rooms/${activeRoom}/presence`), (snapshot) => {
-      setOnline(snapshot.exists() ? Object.keys(snapshot.val()).length : 0);
-    });
-    set(presenceRef, { name: nickname, lastSeen: Date.now() }).then(() => {
-      onDisconnect(presenceRef).remove();
-      setConnected(true);
-    }).catch(() => setNotice("Tidak dapat masuk ke ruang ini. Periksa aturan database."));
+    channel
+      .on("postgres_changes", {
+        event: "INSERT", schema: "public", table: "drewmingle_messages",
+        filter: "room_slug=eq." + activeRoom,
+      }, (payload) => {
+        const message = payload.new as ChatMessage;
+        setMessages((current) => current.some((item) => item.id === message.id)
+          ? current : [...current, message].slice(-100));
+      })
+      .on("presence", { event: "sync" }, () => {
+        if (channel) setOnline(Object.keys(channel.presenceState()).length);
+      })
+      .subscribe(async (status) => {
+        if (status === "SUBSCRIBED" && channel) {
+          await channel.track({ nickname, joined_at: new Date().toISOString() });
+          if (active) setConnected(true);
+        }
+      });
+
     return () => {
-      unsubMessages();
-      unsubPresence();
-      void remove(presenceRef);
-      void roomRef;
+      active = false;
+      if (channel && supabase) void supabase.removeChannel(channel);
     };
   }, [uid, activeRoom, nickname]);
 
@@ -95,34 +135,30 @@ export default function App() {
   }, [messages]);
 
   const sendMessage = async () => {
-    const text = cleanText(draft);
-    if (!text || !uid || !database || busy) return;
-    if (text.length > 400) { setNotice("Pesan maksimal 400 karakter."); return; }
-    if (safeWords.some((word) => text.toLowerCase().includes(word))) {
-      setNotice("Pesan tidak terkirim karena terdeteksi kata yang tidak pantas.");
+    const content = cleanText(draft);
+    if (!content || !uid || !supabase || busy || !connected) return;
+    if (content.length > 400) { setNotice("Pesan maksimal 400 karakter."); return; }
+    if (isBlocked(content)) {
+      setNotice("Pesan tidak terkirim karena mengandung kata yang tidak pantas.");
       return;
     }
     setBusy(true);
-    try {
-      await push(ref(database, `rooms/${activeRoom}/messages`), {
-        uid, name: nickname, text, createdAt: Date.now(),
-      });
-      setDraft("");
-      setNotice("");
-    } catch {
-      setNotice("Pesan gagal dikirim. Periksa koneksi dan aturan Firebase.");
-    } finally { setBusy(false); }
+    const { error } = await supabase.from("drewmingle_messages").insert({
+      room_slug: activeRoom, user_id: uid, nickname, content,
+    });
+    if (error) setNotice("Pesan gagal dikirim. Periksa koneksi atau coba lagi.");
+    else { setDraft(""); setNotice(""); }
+    setBusy(false);
   };
 
   const reportMessage = async (message: ChatMessage) => {
-    if (!uid || !database || message.uid === uid) return;
-    const reportRef = push(ref(database, `rooms/${activeRoom}/reports`));
-    try {
-      await set(reportRef, {
-        reporterUid: uid, messageId: message.id, reason: "Pesan tidak pantas", createdAt: Date.now(),
-      });
-      setNotice("Laporan tercatat. Terima kasih telah menjaga ruang ini.");
-    } catch { setNotice("Laporan gagal dikirim."); }
+    if (!uid || !supabase || message.user_id === uid) return;
+    const { error } = await supabase.from("drewmingle_reports").insert({
+      room_slug: activeRoom, message_id: message.id, reporter_id: uid, reason: "Other",
+    });
+    setNotice(error
+      ? "Laporan gagal dikirim atau pesan ini sudah pernah kamu laporkan."
+      : "Laporan tercatat. Terima kasih telah menjaga ruang ini.");
   };
 
   const changeRoom = (nextCountry: string, nextTopic: string) => {
@@ -133,11 +169,10 @@ export default function App() {
 
   return (
     <div className="app-shell">
-      <div className="ambient ambient-one" /><div className="ambient ambient-two" />
       <header className="topbar">
         <a className="brand" href="#"><span className="brand-mark"><MessageCircle size={19} /></span><span>Drew<span className="brand-accent">Mingle</span></span></a>
         <div className="topbar-right">
-          <span className="status-pill"><i className={connected ? "status-dot live" : "status-dot"} />{connected ? "Connected" : firebaseReady ? "Connecting" : "Setup needed"}</span>
+          <span className="status-pill"><i className={connected ? "status-dot live" : "status-dot"} />{connected ? "Connected" : supabaseReady ? "Connecting" : "Setup needed"}</span>
           <button className="icon-button" onClick={() => setShowSafety(true)} aria-label="Safety information"><ShieldCheck size={18} /></button>
         </div>
       </header>
@@ -181,15 +216,17 @@ export default function App() {
           </div>
 
           <div className="message-area">
-            {!firebaseReady ? (
-              <div className="setup-state"><div className="setup-icon"><Sparkles size={22} /></div><h3>Chat belum diaktifkan</h3><p>Ruang Global sudah tersedia di aplikasi, tetapi layanan chat belum tersambung. Firebase perlu dikonfigurasi sebelum pesan dapat dikirim dan diterima secara langsung.</p><span className="setup-tag">FIREBASE CONFIGURATION REQUIRED</span></div>
+            {!supabaseReady ? (
+              <div className="setup-state"><div className="setup-icon"><Sparkles size={22} /></div><h3>Chat belum diaktifkan</h3><p>Konfigurasi Supabase belum tersedia. Aplikasi membutuhkan URL proyek dan publishable key agar dapat terhubung.</p><span className="setup-tag">SUPABASE CONFIGURATION REQUIRED</span></div>
+            ) : !authReady ? (
+              <div className="setup-state"><div className="setup-icon"><ShieldCheck size={22} /></div><h3>Menyiapkan koneksi aman</h3><p>Jika ini terus muncul, aktifkan Anonymous Sign-Ins pada pengaturan Authentication proyek Supabase.</p><span className="setup-tag">AUTHENTICATION REQUIRED</span></div>
             ) : !messages.length ? (
               <div className="empty-state"><div className="empty-orbit"><MessageCircle size={23} /></div><h3>Start the conversation</h3><p>Belum ada pesan di sini. Mulailah dengan sapaan sederhana.</p><span className="icebreaker" onClick={() => setDraft("Hi! What are you interested in lately?")}>“Hi! What are you interested in lately?” <ArrowUpRight size={13} /></span></div>
             ) : (
               <div className="messages-list">
-                {messages.map((message) => <motion.article initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className={message.uid === uid ? "message own" : "message"} key={message.id}>
-                  <div className="avatar">{message.name.slice(0, 1).toUpperCase()}</div>
-                  <div className="message-content"><div className="message-meta"><strong>{message.uid === uid ? "You" : message.name}</strong><time>{new Date(message.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</time>{message.uid !== uid && <button className="report-button" onClick={() => void reportMessage(message)} title="Report message"><Flag size={12} /></button>}</div><p>{message.text}</p></div>
+                {messages.map((message) => <motion.article initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className={message.user_id === uid ? "message own" : "message"} key={message.id}>
+                  <div className="avatar">{message.nickname.slice(0, 1).toUpperCase()}</div>
+                  <div className="message-content"><div className="message-meta"><strong>{message.user_id === uid ? "You" : message.nickname}</strong><time>{new Date(message.created_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</time>{message.user_id !== uid && <button className="report-button" onClick={() => void reportMessage(message)} title="Report message"><Flag size={12} /></button>}</div><p>{message.content}</p></div>
                 </motion.article>)}
                 <div ref={bottomRef} />
               </div>
@@ -199,8 +236,8 @@ export default function App() {
           <div className="composer">
             <div className="nickname-line"><span className="avatar-mini">{nickname.slice(0, 1)}</span><span>Chatting as <strong>{nickname}</strong></span><button onClick={() => setNickname(makeName())}>Change</button></div>
             <div className="compose-row">
-              <input value={draft} onChange={(event) => setDraft(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); void sendMessage(); } }} maxLength={400} placeholder={firebaseReady ? "Write something kind..." : "Connect Firebase to start chatting"} disabled={!firebaseReady || !connected} />
-              <button className="send-button" onClick={() => void sendMessage()} disabled={!firebaseReady || !connected || !draft.trim() || busy} aria-label="Send message"><Send size={17} /></button>
+              <input value={draft} onChange={(event) => setDraft(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); void sendMessage(); } }} maxLength={400} placeholder={connected ? "Write something kind..." : "Connecting to public room..."} disabled={!connected} />
+              <button className="send-button" onClick={() => void sendMessage()} disabled={!connected || !draft.trim() || busy} aria-label="Send message"><Send size={17} /></button>
             </div>
             <div className="composer-foot"><span><ShieldCheck size={12} /> Keep it respectful. No personal information.</span><span>{draft.length}/400</span></div>
           </div>
