@@ -162,43 +162,56 @@ export function CallPanel({ callRoomId, callType, nickname, peerId, isHost, onLe
       if (state === "failed") setError("Koneksi langsung tidak berhasil di jaringan ini. Coba jaringan lain; jaringan tertentu memerlukan layanan TURN.");
     };
 
+    const startOffer = async () => {
+      if (!isHost || offerStartedRef.current || disposed) return;
+      offerStartedRef.current = true;
+      try {
+        const offer = await pc.createOffer();
+        await pc.setLocalDescription(offer);
+        await sendSignal("offer", offer);
+      } catch {
+        offerStartedRef.current = false;
+        if (!disposed) setError("Penawaran koneksi gagal dibuat. Coba keluar lalu undang kembali.");
+      }
+    };
+
+    const handleSignal = async (signal: SignalRow) => {
+      if (signal.room_id !== callRoomId || signal.sender_id !== peerId) return;
+      try {
+        if (signal.signal_type === "ready" && isHost) {
+          await startOffer();
+        } else if (signal.signal_type === "offer" && !isHost && signal.payload) {
+          await pc.setRemoteDescription(signal.payload as RTCSessionDescriptionInit);
+          await flushIce();
+          const answer = await pc.createAnswer();
+          await pc.setLocalDescription(answer);
+          await sendSignal("answer", answer);
+        } else if (signal.signal_type === "answer" && isHost && signal.payload) {
+          await pc.setRemoteDescription(signal.payload as RTCSessionDescriptionInit);
+          await flushIce();
+        } else if (signal.signal_type === "ice" && signal.payload) {
+          const candidate = signal.payload as RTCIceCandidateInit;
+          if (pc.remoteDescription) {
+            try { await pc.addIceCandidate(candidate); } catch { /* Ignore stale ICE candidates. */ }
+          } else {
+            pendingIceRef.current.push(candidate);
+          }
+        } else if (signal.signal_type === "hangup" && !endedRef.current) {
+          setConnectionLabel("Call ended");
+          endedRef.current = true;
+          onLeave();
+        }
+      } catch {
+        if (!disposed) setError("Negosiasi panggilan gagal. Coba keluar lalu undang kembali.");
+      }
+    };
+
     const channel = client.channel("call-signals-" + callRoomId + "-" + uid)
       .on("postgres_changes", {
         event: "INSERT", schema: "public", table: "drewmingle_call_signals",
         filter: "recipient_id=eq." + uid,
-      }, async (payload) => {
-        const signal = payload.new as SignalRow;
-        if (signal.room_id && signal.sender_id !== peerId) return;
-        try {
-          if (signal.signal_type === "ready" && isHost && !offerStartedRef.current) {
-            offerStartedRef.current = true;
-            const offer = await pc.createOffer();
-            await pc.setLocalDescription(offer);
-            await sendSignal("offer", offer);
-          } else if (signal.signal_type === "offer" && !isHost && signal.payload) {
-            await pc.setRemoteDescription(signal.payload as RTCSessionDescriptionInit);
-            await flushIce();
-            const answer = await pc.createAnswer();
-            await pc.setLocalDescription(answer);
-            await sendSignal("answer", answer);
-          } else if (signal.signal_type === "answer" && isHost && signal.payload) {
-            await pc.setRemoteDescription(signal.payload as RTCSessionDescriptionInit);
-            await flushIce();
-          } else if (signal.signal_type === "ice" && signal.payload) {
-            const candidate = signal.payload as RTCIceCandidateInit;
-            if (pc.remoteDescription) {
-              try { await pc.addIceCandidate(candidate); } catch { /* Ignore candidates from stale sessions. */ }
-            } else {
-              pendingIceRef.current.push(candidate);
-            }
-          } else if (signal.signal_type === "hangup" && !endedRef.current) {
-            setConnectionLabel("Call ended");
-            endedRef.current = true;
-            onLeave();
-          }
-        } catch {
-          if (!disposed) setError("Negosiasi panggilan gagal. Coba keluar lalu undang kembali.");
-        }
+      }, (payload) => {
+        void handleSignal(payload.new as SignalRow);
       })
       .on("postgres_changes", {
         event: "UPDATE", schema: "public", table: "drewmingle_call_rooms",
@@ -210,8 +223,28 @@ export function CallPanel({ callRoomId, callType, nickname, peerId, isHost, onLe
           onLeave();
         }
       })
-      .subscribe((status) => {
-        if (status === "SUBSCRIBED") void sendSignal("ready");
+      .subscribe(async (status) => {
+        if (status === "SUBSCRIBED") {
+          await sendSignal("ready");
+          // Realtime INSERT events are not replayed; recover a peer-ready
+          // signal that arrived before this channel finished subscribing.
+          if (isHost) {
+            const { data, error: lookupError } = await client.from("drewmingle_call_signals")
+              .select("id,room_id,sender_id,signal_type,payload")
+              .eq("room_id", callRoomId)
+              .eq("sender_id", peerId)
+              .eq("recipient_id", uid)
+              .eq("signal_type", "ready")
+              .order("created_at", { ascending: false })
+              .limit(1)
+              .maybeSingle();
+            if (lookupError) {
+              if (!disposed) setError("Tidak dapat memeriksa kesiapan teman. Muat ulang panggilan.");
+            } else if (data) {
+              await handleSignal(data as SignalRow);
+            }
+          }
+        }
         if (status === "CHANNEL_ERROR" || status === "TIMED_OUT") setError("Koneksi sinyal gagal. Muat ulang halaman.");
       });
     signalChannelRef.current = channel;
