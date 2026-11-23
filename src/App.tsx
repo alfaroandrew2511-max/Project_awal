@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import {
   ArrowUpRight, Globe2, Hash, MessageCircle, Send, ShieldCheck,
-  Users, Wifi, X, Flag, Sparkles, ChevronDown, CircleHelp, Moon, Sun, Reply
+  Users, Wifi, X, Flag, Sparkles, ChevronDown, CircleHelp, Moon, Sun, Reply, Bell, BellRing
 } from "lucide-react";
 import type { RealtimeChannel } from "@supabase/supabase-js";
 import { supabase, supabaseReady } from "./supabase";
@@ -46,6 +46,7 @@ export default function App() {
   const [showSafety, setShowSafety] = useState(false);
   const [busy, setBusy] = useState(false);
   const [authReady, setAuthReady] = useState(false);
+  const [notificationPermission, setNotificationPermission] = useState<NotificationPermission | "unsupported">(() => typeof window !== "undefined" && "Notification" in window ? Notification.permission : "unsupported");
   const bottomRef = useRef<HTMLDivElement>(null);
   const activeRoom = useMemo(() => roomId(country, topic), [country, topic]);
   const selectedCountry = countries.find((item) => item.id === country) ?? countries[0];
@@ -122,6 +123,21 @@ export default function App() {
         const message = payload.new as ChatMessage;
         setMessages((current) => current.some((item) => item.id === message.id)
           ? current : [...current, message].slice(-100));
+        if (message.user_id !== uid) {
+          if ("Notification" in window && Notification.permission === "granted") {
+            const notification = new Notification(`DrewMingle · ${message.nickname}`, {
+              body: message.content,
+              tag: `drewmingle-${message.id}`,
+              icon: "/favicon.ico",
+            });
+            notification.onclick = () => {
+              window.focus();
+              notification.close();
+            };
+          } else {
+            setNotice(`Pesan baru dari ${message.nickname}: ${message.content}`);
+          }
+        }
       })
       .on("presence", { event: "sync" }, () => {
         if (channel) setOnline(Object.keys(channel.presenceState()).length);
@@ -142,6 +158,22 @@ export default function App() {
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
+
+  const enableNotifications = async () => {
+    if (!("Notification" in window)) {
+      setNotice("Browser ini belum mendukung notifikasi. Coba gunakan Chrome versi terbaru.");
+      return;
+    }
+    if (!window.isSecureContext) {
+      setNotice("Notifikasi membutuhkan koneksi HTTPS.");
+      return;
+    }
+    const permission = await Notification.requestPermission();
+    setNotificationPermission(permission);
+    setNotice(permission === "granted"
+      ? "Notifikasi DrewMingle berhasil diaktifkan."
+      : "Izin notifikasi belum diberikan. Ubah izin situs melalui pengaturan browser.");
+  };
 
   const sendMessage = async () => {
     const content = cleanText(draft);
@@ -182,6 +214,7 @@ export default function App() {
         <a className="brand" href="#"><span className="brand-mark"><MessageCircle size={19} /></span><span>Drew<span className="brand-accent">Mingle</span></span></a>
         <div className="topbar-right">
           <span className="status-pill"><i className={connected ? "status-dot live" : "status-dot"} />{connected ? "Connected" : supabaseReady ? "Connecting" : "Setup needed"}</span>
+          <button className="icon-button" onClick={() => void enableNotifications()} aria-label="Enable chat notifications" title={notificationPermission === "granted" ? "Notifications enabled" : "Enable notifications"}><BellRing size={17} /></button>
           <button className="icon-button" onClick={() => setTheme((current) => current === "light" ? "dark" : "light")} aria-label={theme === "light" ? "Enable dark mode" : "Enable light mode"} title={theme === "light" ? "Dark mode" : "Light mode"}>{theme === "light" ? <Moon size={17} /> : <Sun size={17} />}</button>
           <button className="icon-button" onClick={() => setShowSafety(true)} aria-label="Safety information"><ShieldCheck size={18} /></button>
         </div>
