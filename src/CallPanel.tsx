@@ -13,6 +13,7 @@ type CallPanelProps = {
 
 type SignalRow = {
   id: string;
+  room_id: string;
   sender_id: string;
   signal_type: "ready" | "offer" | "answer" | "ice" | "hangup";
   payload: RTCSessionDescriptionInit | RTCIceCandidateInit | null;
@@ -241,14 +242,17 @@ export function CallPanel({ callRoomId, callType, nickname, peerId, isHost, onLe
   };
 
   const leave = async () => {
-    if (!endedRef.current && supabase && uid && peerId) {
-      await supabase.from("drewmingle_call_signals").insert({
-        room_id: callRoomId, sender_id: uid, recipient_id: peerId,
-        signal_type: "hangup", payload: null,
-      });
+    try {
+      if (!endedRef.current && supabase && uid && peerId) {
+        await supabase.from("drewmingle_call_signals").insert({
+          room_id: callRoomId, sender_id: uid, recipient_id: peerId,
+          signal_type: "hangup", payload: null,
+        });
+      }
+    } finally {
+      endedRef.current = true;
+      onLeave();
     }
-    endedRef.current = true;
-    onLeave();
   };
 
   const remoteHasVideo = !!remoteStream?.getVideoTracks().length;
