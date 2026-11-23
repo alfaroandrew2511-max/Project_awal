@@ -32,6 +32,7 @@ export function CallPanel({ callRoomId, callType, nickname, peerId, isHost, onLe
   const localVideoRef = useRef<HTMLVideoElement>(null);
   const remoteVideoRef = useRef<HTMLVideoElement>(null);
   const remoteAudioRef = useRef<HTMLAudioElement>(null);
+  const remoteStreamRef = useRef<MediaStream>(new MediaStream());
   const peerRef = useRef<RTCPeerConnection | null>(null);
   const audioSenderRef = useRef<RTCRtpSender | null>(null);
   const videoSenderRef = useRef<RTCRtpSender | null>(null);
@@ -123,8 +124,16 @@ export function CallPanel({ callRoomId, callType, nickname, peerId, isHost, onLe
       if (event.candidate) void sendSignal("ice", event.candidate.toJSON());
     };
     pc.ontrack = (event) => {
-      const stream = event.streams[0] ?? new MediaStream([event.track]);
-      setRemoteStream(stream);
+      // A transceiver track may arrive without event.streams[0].
+      // Keep one stream so audio and video tracks cannot overwrite each other.
+      const stream = remoteStreamRef.current;
+      if (!stream.getTracks().some((track) => track.id === event.track.id)) {
+        stream.addTrack(event.track);
+      }
+      setRemoteStream(new MediaStream(stream.getTracks()));
+      event.track.onunmute = () => {
+        if (!disposed) setRemoteStream(new MediaStream(stream.getTracks()));
+      };
     };
     pc.onconnectionstatechange = () => {
       if (disposed) return;
@@ -207,8 +216,14 @@ export function CallPanel({ callRoomId, callType, nickname, peerId, isHost, onLe
     if (localVideoRef.current) localVideoRef.current.srcObject = localStream;
   }, [localStream]);
   useEffect(() => {
-    if (remoteVideoRef.current) remoteVideoRef.current.srcObject = remoteStream;
-    if (remoteAudioRef.current) remoteAudioRef.current.srcObject = remoteStream;
+    if (remoteVideoRef.current) {
+      remoteVideoRef.current.srcObject = remoteStream;
+      void remoteVideoRef.current.play().catch(() => undefined);
+    }
+    if (remoteAudioRef.current) {
+      remoteAudioRef.current.srcObject = remoteStream;
+      void remoteAudioRef.current.play().catch(() => undefined);
+    }
   }, [remoteStream]);
 
   const enableMedia = async (kind: "audio" | "video") => {
@@ -232,6 +247,9 @@ export function CallPanel({ callRoomId, callType, nickname, peerId, isHost, onLe
       }
       if (kind === "audio") setMicOn(true);
       else setCameraOn(true);
+      // User interaction can unlock audible playback on mobile browsers.
+      if (remoteAudioRef.current) void remoteAudioRef.current.play().catch(() => undefined);
+      if (remoteVideoRef.current) void remoteVideoRef.current.play().catch(() => undefined);
     } catch {
       setError(kind === "audio" ? "Mikrofon tidak dapat diaktifkan. Periksa izin browser." : "Kamera tidak dapat diaktifkan. Periksa izin browser.");
     }
@@ -277,13 +295,16 @@ export function CallPanel({ callRoomId, callType, nickname, peerId, isHost, onLe
         <div><h2>{callType === "video" ? "Video hangout" : "Voice hangout"}</h2><p>Undangan diterima · Panggilan pribadi</p></div>
         <span className="call-state">{connectionLabel}</span>
       </div>
-      {!callReady ? <div className="call-waiting">Menunggu teman menerima undangan...</div> : error ? <div className="call-error">{error}</div> : remoteHasVideo
+      {!callReady ? <div className="call-waiting">Menunggu teman menerima undangan...</div> : error ? <div className="call-error">{error}</div> : callType === "video"
         ? <div className="call-video-grid">
-            <div className="call-video-tile"><video ref={remoteVideoRef} autoPlay playsInline /><span className="call-video-name">Teman</span></div>
+            <div className="call-video-tile">
+              <video ref={remoteVideoRef} autoPlay playsInline muted />
+              <span className="call-video-name">{remoteHasVideo ? "Teman" : "Menunggu video teman..."}</span>
+            </div>
             {cameraOn && <div className="call-video-tile"><video ref={localVideoRef} autoPlay muted playsInline /><span className="call-video-name">{nickname} (You)</span></div>}
           </div>
-        : <div className="call-waiting">{connected ? "Panggilan tersambung. Suara dan kamera masih nonaktif sampai kamu menyalakannya." : "Menghubungkan ke teman. Pastikan keduanya memakai jaringan yang mendukung koneksi langsung."}</div>}
-      {remoteStream && !remoteHasVideo && <audio ref={remoteAudioRef} autoPlay />}
+        : <div className="call-waiting">{connected ? "Panggilan tersambung. Aktifkan mikrofon untuk mulai berbicara." : "Menghubungkan ke teman. Pastikan keduanya memakai jaringan yang mendukung koneksi langsung."}</div>}
+      <audio ref={remoteAudioRef} autoPlay playsInline />
       <div className="call-controls">
         <button className={micOn ? "active" : ""} onClick={() => void toggleMic()} disabled={!callReady}>{micOn ? <Mic size={16} /> : <MicOff size={16} />}{micOn ? "Mute" : "Unmute"}</button>
         {callType === "video" && <button className={cameraOn ? "active" : ""} onClick={() => void toggleCamera()} disabled={!callReady}>{cameraOn ? <Camera size={16} /> : <CameraOff size={16} />}{cameraOn ? "Camera off" : "Camera on"}</button>}
