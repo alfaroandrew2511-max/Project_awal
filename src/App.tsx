@@ -199,7 +199,16 @@ export default function App() {
       }, (payload) => {
         const invite = payload.new as { status: string };
         if (invite.status === "accepted") setNotice("Undangan diterima. Temanmu sudah masuk ke ruang panggilan.");
-        if (invite.status === "declined") setNotice("Undangan panggilan tidak diterima.");
+        if (invite.status === "declined") {
+          setNotice("Undangan panggilan tidak diterima.");
+          setActiveCall((current) => {
+            if (current && current.hostId === uid) {
+              void client.from("drewmingle_call_rooms").update({ status: "ended" }).eq("id", current.roomId);
+              return null;
+            }
+            return current;
+          });
+        }
       })
       .subscribe();
     void client.from("drewmingle_call_invites")
@@ -259,6 +268,7 @@ export default function App() {
     if (supabase && activeCall?.hostId === uid) {
       await supabase.from("drewmingle_call_rooms").update({ status: "ended" })
         .eq("id", activeCall.roomId).eq("host_id", uid);
+      await supabase.from("drewmingle_call_signals").delete().eq("room_id", activeCall.roomId);
     }
     setActiveCall(null);
   };
