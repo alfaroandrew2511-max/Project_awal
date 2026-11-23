@@ -2,13 +2,13 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import {
   ArrowUpRight, Globe2, Hash, MessageCircle, Send, ShieldCheck,
-  Users, Wifi, X, Flag, Sparkles, ChevronDown, CircleHelp
+  Users, Wifi, X, Flag, Sparkles, ChevronDown, CircleHelp, Moon, Sun, Reply
 } from "lucide-react";
 import type { RealtimeChannel } from "@supabase/supabase-js";
 import { supabase, supabaseReady } from "./supabase";
 
 type Country = { id: string; label: string; flag: string };
-type ChatMessage = { id: string; user_id: string; nickname: string; content: string; created_at: string };
+type ChatMessage = { id: string; user_id: string; nickname: string; content: string; created_at: string; reply_to_id: string | null };
 const countries: Country[] = [
   { id: "global", label: "Global", flag: "🌐" },
   { id: "id", label: "Indonesia", flag: "🇮🇩" },
@@ -30,7 +30,11 @@ const cleanText = (value: string) => value.replace(/[<>]/g, "").trim();
 const isBlocked = (value: string) => blockedWords.some((word) => value.toLowerCase().includes(word));
 
 export default function App() {
-  const [nickname, setNickname] = useState(makeName);
+  const [nickname, setNickname] = useState(() => window.localStorage.getItem("drewmingle-nickname") || makeName());
+  const [nicknameDraft, setNicknameDraft] = useState(() => window.localStorage.getItem("drewmingle-nickname") || "");
+  const [editingNickname, setEditingNickname] = useState(false);
+  const [theme, setTheme] = useState<"light" | "dark">(() => window.localStorage.getItem("drewmingle-theme") === "dark" ? "dark" : "light");
+  const [replyingTo, setReplyingTo] = useState<ChatMessage | null>(null);
   const [country, setCountry] = useState("global");
   const [topic, setTopic] = useState("General");
   const [uid, setUid] = useState("");
@@ -45,6 +49,9 @@ export default function App() {
   const bottomRef = useRef<HTMLDivElement>(null);
   const activeRoom = useMemo(() => roomId(country, topic), [country, topic]);
   const selectedCountry = countries.find((item) => item.id === country) ?? countries[0];
+
+  useEffect(() => { window.localStorage.setItem("drewmingle-theme", theme); }, [theme]);
+  useEffect(() => { window.localStorage.setItem("drewmingle-nickname", nickname); }, [nickname]);
 
   useEffect(() => {
     const client = supabase;
@@ -94,7 +101,7 @@ export default function App() {
     const loadMessages = async () => {
       const { data, error } = await client
         .from("drewmingle_messages")
-        .select("id,user_id,nickname,content,created_at")
+        .select("id,user_id,nickname,content,created_at,reply_to_id")
         .eq("room_slug", activeRoom)
         .order("created_at", { ascending: true })
         .limit(100);
@@ -146,10 +153,10 @@ export default function App() {
     }
     setBusy(true);
     const { error } = await supabase.from("drewmingle_messages").insert({
-      room_slug: activeRoom, user_id: uid, nickname, content,
+      room_slug: activeRoom, user_id: uid, nickname, content, reply_to_id: replyingTo?.id ?? null,
     });
     if (error) setNotice("Pesan gagal dikirim. Periksa koneksi atau coba lagi.");
-    else { setDraft(""); setNotice(""); }
+    else { setDraft(""); setReplyingTo(null); setNotice(""); }
     setBusy(false);
   };
 
@@ -170,11 +177,12 @@ export default function App() {
   };
 
   return (
-    <div className="app-shell">
+    <div className="app-shell" data-theme={theme}>
       <header className="topbar">
         <a className="brand" href="#"><span className="brand-mark"><MessageCircle size={19} /></span><span>Drew<span className="brand-accent">Mingle</span></span></a>
         <div className="topbar-right">
           <span className="status-pill"><i className={connected ? "status-dot live" : "status-dot"} />{connected ? "Connected" : supabaseReady ? "Connecting" : "Setup needed"}</span>
+          <button className="icon-button" onClick={() => setTheme((current) => current === "light" ? "dark" : "light")} aria-label={theme === "light" ? "Enable dark mode" : "Enable light mode"} title={theme === "light" ? "Dark mode" : "Light mode"}>{theme === "light" ? <Moon size={17} /> : <Sun size={17} />}</button>
           <button className="icon-button" onClick={() => setShowSafety(true)} aria-label="Safety information"><ShieldCheck size={18} /></button>
         </div>
       </header>
@@ -228,7 +236,7 @@ export default function App() {
               <div className="messages-list">
                 {messages.map((message) => <motion.article initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className={message.user_id === uid ? "message own" : "message"} key={message.id}>
                   <div className="avatar">{message.nickname.slice(0, 1).toUpperCase()}</div>
-                  <div className="message-content"><div className="message-meta"><strong>{message.user_id === uid ? "You" : message.nickname}</strong><time>{new Date(message.created_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</time>{message.user_id !== uid && <button className="report-button" onClick={() => void reportMessage(message)} title="Report message"><Flag size={12} /></button>}</div><p>{message.content}</p></div>
+                  <div className="message-content"><div className="message-meta"><strong>{message.user_id === uid ? "You" : message.nickname}</strong><time>{new Date(message.created_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</time><button className="report-button reply-action" onClick={() => setReplyingTo(message)} title="Reply to message"><Reply size={13} /></button>{message.user_id !== uid && <button className="report-button" onClick={() => void reportMessage(message)} title="Report message"><Flag size={12} /></button>}</div>{message.reply_to_id && <div className="reply-quote">{(() => { const parent = messages.find((item) => item.id === message.reply_to_id); return parent ? <><strong>{parent.nickname}</strong><span>{parent.content}</span></> : <span>Reply to an earlier message</span>; })()}</div>}<p>{message.content}</p></div>
                 </motion.article>)}
                 <div ref={bottomRef} />
               </div>
