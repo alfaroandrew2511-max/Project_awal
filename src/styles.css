@@ -119,3 +119,54 @@ button{cursor:pointer}
 .safety-note{color:rgba(255,255,255,.82)}
 .safety-note svg{color:#a7e7ce}
 @media(max-width:700px){.intro{min-height:380px;padding:25px 20px;border-radius:16px}.intro-stats{flex-wrap:wrap;gap:14px}}
+
+
+/* Theme toggle */
+.app-shell[data-theme="dark"]{--muted:#a1a9b6;--line:#303846;--panel:#1c232d;--accent:#aeb8ff;color:#e7ebf2;background:#111720}
+.app-shell[data-theme="dark"],.app-shell[data-theme="dark"] .topbar{background:#111720}
+.app-shell[data-theme="dark"] .topbar{border-color:#293241}
+.app-shell[data-theme="dark"] .brand{color:#edf0f6}
+.app-shell[data-theme="dark"] .brand-mark{background:#e9ecf5;color:#202735}
+.app-shell[data-theme="dark"] .brand-accent{color:#aeb8ff}
+.app-shell[data-theme="dark"] .status-pill,.app-shell[data-theme="dark"] .room-live{color:#b1bac8}
+.app-shell[data-theme="dark"] .icon-button{background:#1d2632;border-color:#354052;color:#dce2ec}
+.app-shell[data-theme="dark"] .icon-button:hover{border-color:#65718a;color:#fff}
+.app-shell[data-theme="dark"] .chat-card{background:#1c232d;border-color:#303a49;box-shadow:0 12px 36px rgba(0,0,0,.2)}
+.app-shell[data-theme="dark"] .chat-kicker,.app-shell[data-theme="dark"] .field-label{color:#a2adbb}
+.app-shell[data-theme="dark"] .chat-heading h2,.app-shell[data-theme="dark"] .room-info strong,.app-shell[data-theme="dark"] .setup-state h3,.app-shell[data-theme="dark"] .empty-state h3,.app-shell[data-theme="dark"] .message-meta strong{color:#edf1f7}
+.app-shell[data-theme="dark"] .filters{border-color:#303846}
+.app-shell[data-theme="dark"] .country-select-wrap select,.app-shell[data-theme="dark"] .topic-chip,.app-shell[data-theme="dark"] .compose-row input,.app-shell[data-theme="dark"] .nickname-input{background:#151c26;border-color:#354052;color:#e6ebf3}
+.app-shell[data-theme="dark"] .topic-chip{color:#b5bfcd}
+.app-shell[data-theme="dark"] .topic-chip.active{background:#2a3150;border-color:#5866aa;color:#d8ddff}
+.app-shell[data-theme="dark"] .room-banner{background:#171e28;border-color:#303a49}
+.app-shell[data-theme="dark"] .room-icon{background:#27313f}
+.app-shell[data-theme="dark"] .room-info span,.app-shell[data-theme="dark"] .member-count,.app-shell[data-theme="dark"] .setup-state p,.app-shell[data-theme="dark"] .empty-state p{color:#a2adbb}
+.app-shell[data-theme="dark"] .message-content p{background:#293340;color:#e2e8f0}
+.app-shell[data-theme="dark"] .message.own .message-content p{background:#30375a;color:#e2e5ff}
+.app-shell[data-theme="dark"] .avatar,.app-shell[data-theme="dark"] .avatar-mini{background:#354052;color:#e2e8f0}
+.app-shell[data-theme="dark"] .message.own .avatar{background:#30375a;color:#d9ddff}
+.app-shell[data-theme="dark"] .composer{background:#171e28;border-color:#303846}
+.app-shell[data-theme="dark"] .nickname-line{color:#a6b0bd}
+.app-shell[data-theme="dark"] .nickname-line strong{color:#edf1f7}
+.app-shell[data-theme="dark"] .composer-foot{color:#9aa6b5}
+.app-shell[data-theme="dark"] .footer{border-color:#293241;color:#9da8b7}
+.app-shell[data-theme="dark"] .footer button{color:#bac3d0}
+.app-shell[data-theme="dark"] .safety-modal{background:#1c232d;border-color:#354052}
+.app-shell[data-theme="dark"] .safety-modal h3{color:#f0f3f8}
+.app-shell[data-theme="dark"] .safety-modal p,.app-shell[data-theme="dark"] .safety-modal li{color:#b7c0cd}
+.app-shell[data-theme="dark"] .reply-quote,.app-shell[data-theme="dark"] .reply-composer{background:#222c39;border-color:#3a4657;color:#dce3ed}
+.app-shell[data-theme="dark"] .reply-quote span,.app-shell[data-theme="dark"] .reply-composer span{color:#aeb8c7}
+
+/* Reply and nickname controls */
+.nickname-line{flex-wrap:wrap}
+.nickname-input{width:145px;min-width:0;height:27px;padding:0 8px;border:1px solid #e1e4e9;border-radius:6px;background:#fff;color:#303640;font-size:10px;outline:none}
+.reply-action{color:var(--accent)}
+.reply-quote{display:grid;gap:3px;max-width:95%;margin-top:8px;padding:7px 9px;border-left:2px solid var(--accent);border-radius:0 7px 7px 0;background:#f6f7fb;color:#586170;font-size:9px}
+.reply-quote strong{font-size:9px;color:var(--accent)}
+.reply-quote span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.reply-composer{display:flex;align-items:center;justify-content:space-between;gap:10px;margin:0 0 9px;padding:8px 10px;border:1px solid #e5e8ef;border-radius:8px;background:#f7f8fb;color:#4c5665}
+.reply-composer div{display:grid;gap:3px;min-width:0}
+.reply-composer strong{font-size:10px;color:var(--accent)}
+.reply-composer span{font-size:9px;color:#737d8b;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.reply-composer button{border:0;background:transparent;color:inherit;display:grid;place-items:center}
+@media(max-width:700px){.nickname-input{width:125px}}
