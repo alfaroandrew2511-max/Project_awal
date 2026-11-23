@@ -92,7 +92,7 @@ export default function App() {
     setOnline(0);
 
     const loadMessages = async () => {
-      const { data, error } = await supabase
+      const { data, error } = await client
         .from("drewmingle_messages")
         .select("id,user_id,nickname,content,created_at")
         .eq("room_slug", activeRoom)
