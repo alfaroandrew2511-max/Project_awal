@@ -58,15 +58,16 @@ export function CallPanel({ callRoomId, callType, nickname, peerId, isHost, onLe
 
   useEffect(() => {
     if (!supabase || !uid || !isHost) return;
+    const client = supabase;
     let active = true;
     const checkAccepted = async () => {
-      const { data } = await supabase.from("drewmingle_call_invites")
+      const { data } = await client.from("drewmingle_call_invites")
         .select("id,status").eq("room_id", callRoomId).eq("invitee_id", peerId)
         .eq("status", "accepted").maybeSingle();
       if (active && data) setCallReady(true);
     };
     void checkAccepted();
-    const channel = supabase.channel("call-acceptance-" + callRoomId)
+    const channel = client.channel("call-acceptance-" + callRoomId)
       .on("postgres_changes", {
         event: "UPDATE", schema: "public", table: "drewmingle_call_invites",
         filter: "room_id=eq." + callRoomId,
@@ -81,12 +82,13 @@ export function CallPanel({ callRoomId, callType, nickname, peerId, isHost, onLe
       .subscribe();
     return () => {
       active = false;
-      void supabase.removeChannel(channel);
+      void client.removeChannel(channel);
     };
   }, [uid, callRoomId, peerId, isHost]);
 
   useEffect(() => {
     if (!supabase || !uid || !peerId || !callReady) return;
+    const client = supabase;
     let disposed = false;
     const pc = new RTCPeerConnection({
       iceServers: [
@@ -100,7 +102,7 @@ export function CallPanel({ callRoomId, callType, nickname, peerId, isHost, onLe
 
     const sendSignal = async (signalType: SignalRow["signal_type"], payload: SignalRow["payload"] = null) => {
       if (!supabase || disposed) return;
-      const { error: sendError } = await supabase.from("drewmingle_call_signals").insert({
+      const { error: sendError } = await client.from("drewmingle_call_signals").insert({
         room_id: callRoomId, sender_id: uid, recipient_id: peerId,
         signal_type: signalType, payload,
       });
@@ -130,7 +132,7 @@ export function CallPanel({ callRoomId, callType, nickname, peerId, isHost, onLe
       if (state === "failed") setError("Koneksi langsung tidak berhasil di jaringan ini. Coba jaringan lain; jaringan tertentu memerlukan layanan TURN.");
     };
 
-    const channel = supabase.channel("call-signals-" + callRoomId + "-" + uid)
+    const channel = client.channel("call-signals-" + callRoomId + "-" + uid)
       .on("postgres_changes", {
         event: "INSERT", schema: "public", table: "drewmingle_call_signals",
         filter: "recipient_id=eq." + uid,
@@ -176,7 +178,7 @@ export function CallPanel({ callRoomId, callType, nickname, peerId, isHost, onLe
 
     return () => {
       disposed = true;
-      void supabase.removeChannel(channel);
+      void client.removeChannel(channel);
       pc.onicecandidate = null;
       pc.ontrack = null;
       pc.close();
