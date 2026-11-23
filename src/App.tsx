@@ -12,7 +12,7 @@ type Country = { id: string; label: string; flag: string };
 type ChatMessage = { id: string; user_id: string; nickname: string; content: string; created_at: string; reply_to_id: string | null };
 type OnlineMember = { user_id: string; nickname: string };
 type CallType = "voice" | "video";
-type ActiveCall = { roomId: string; callType: CallType; hostId: string };
+type ActiveCall = { roomId: string; callType: CallType; hostId: string; peerId: string };
 type IncomingInvite = { id: string; room_id: string; inviter_id: string; callType: CallType };
 const countries: Country[] = [
   { id: "global", label: "Global", flag: "🌐" },
@@ -234,7 +234,7 @@ export default function App() {
       await supabase.from("drewmingle_call_rooms").update({ status: "ended" }).eq("id", room.id);
       setNotice("Undangan gagal dikirim. Pengguna mungkin sudah tidak online.");
     } else {
-      setActiveCall({ roomId: room.id, callType, hostId: uid });
+      setActiveCall({ roomId: room.id, callType, hostId: uid, peerId: member.user_id });
       setNotice("Undangan dikirim kepada " + member.nickname + ". Tunggu persetujuannya.");
     }
     setSendingInvite("");
@@ -250,7 +250,7 @@ export default function App() {
     if (error) {
       setNotice("Respons undangan gagal dikirim. Coba muat ulang.");
     } else if (accept) {
-      setActiveCall({ roomId: invite.room_id, callType: invite.callType, hostId: invite.inviter_id });
+      setActiveCall({ roomId: invite.room_id, callType: invite.callType, hostId: invite.inviter_id, peerId: invite.inviter_id });
     }
     setIncomingInvite(null);
   };
@@ -428,7 +428,7 @@ export default function App() {
           </div>
         </div>
       </div>}
-      {activeCall && <CallPanel callRoomId={activeCall.roomId} callType={activeCall.callType} nickname={nickname} onLeave={() => void leaveCall()} />}
+      {activeCall && <CallPanel callRoomId={activeCall.roomId} callType={activeCall.callType} nickname={nickname} peerId={activeCall.peerId} isHost={activeCall.hostId === uid} onLeave={() => void leaveCall()} />}
       <footer className="footer"><span>© 2026 DrewMingle</span><span>Meet ideas, not expectations.</span><button onClick={() => setShowSafety(true)}><CircleHelp size={13} /> Safety guidelines</button></footer>
 
       <AnimatePresence>{showSafety && <motion.div className="modal-backdrop" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => setShowSafety(false)}><motion.div className="safety-modal" initial={{ opacity: 0, y: 14, scale: .98 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0, y: 10 }} onClick={(event) => event.stopPropagation()}><div className="modal-top"><span className="modal-icon"><ShieldCheck size={20} /></span><button className="icon-button" onClick={() => setShowSafety(false)}><X size={17} /></button></div><h3>Keep the conversation safe.</h3><p>DrewMingle adalah ruang obrolan publik berbasis topik, bukan tempat untuk membagikan informasi pribadi.</p><ul><li>Jangan bagikan nama lengkap, alamat, sekolah, nomor telepon, atau akun pribadi.</li><li>Jangan pindah ke percakapan privat dengan orang yang baru dikenal.</li><li>Laporkan pesan yang melecehkan, mengancam, atau meminta informasi pribadi.</li><li>Keluar dari ruang jika percakapan membuat Anda tidak nyaman.</li></ul><button className="modal-done" onClick={() => setShowSafety(false)}>I understand</button></motion.div></motion.div>}</AnimatePresence>
