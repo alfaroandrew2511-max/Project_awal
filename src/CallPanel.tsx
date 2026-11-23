@@ -29,6 +29,9 @@ export function CallPanel({ callRoomId, callType, nickname, peerId, isHost, onLe
   const [localStream, setLocalStream] = useState<MediaStream | null>(null);
   const [remoteStream, setRemoteStream] = useState<MediaStream | null>(null);
   const [error, setError] = useState("");
+  const [playbackBlocked, setPlaybackBlocked] = useState(false);
+  const remoteAudioStreamRef = useRef<MediaStream>(new MediaStream());
+  const remoteVideoStreamRef = useRef<MediaStream>(new MediaStream());
   const localVideoRef = useRef<HTMLVideoElement>(null);
   const remoteVideoRef = useRef<HTMLVideoElement>(null);
   const remoteAudioRef = useRef<HTMLAudioElement>(null);
@@ -124,15 +127,31 @@ export function CallPanel({ callRoomId, callType, nickname, peerId, isHost, onLe
       if (event.candidate) void sendSignal("ice", event.candidate.toJSON());
     };
     pc.ontrack = (event) => {
-      // A transceiver track may arrive without event.streams[0].
-      // Keep one stream so audio and video tracks cannot overwrite each other.
-      const stream = remoteStreamRef.current;
-      if (!stream.getTracks().some((track) => track.id === event.track.id)) {
-        stream.addTrack(event.track);
+      // Keep audio and video in dedicated MediaStreams. Some mobile browsers
+      // behave inconsistently when one mixed stream is attached to two elements.
+      const track = event.track;
+      const allTracks = remoteStreamRef.current;
+      if (!allTracks.getTracks().some((item) => item.id === track.id)) allTracks.addTrack(track);
+      const target = track.kind === "audio" ? remoteAudioStreamRef.current : remoteVideoStreamRef.current;
+      if (!target.getTracks().some((item) => item.id === track.id)) target.addTrack(track);
+      if (track.kind === "audio" && remoteAudioRef.current) {
+        remoteAudioRef.current.srcObject = remoteAudioStreamRef.current;
+        void remoteAudioRef.current.play().then(() => setPlaybackBlocked(false)).catch(() => setPlaybackBlocked(true));
       }
-      setRemoteStream(new MediaStream(stream.getTracks()));
-      event.track.onunmute = () => {
-        if (!disposed) setRemoteStream(new MediaStream(stream.getTracks()));
+      if (track.kind === "video" && remoteVideoRef.current) {
+        remoteVideoRef.current.srcObject = remoteVideoStreamRef.current;
+        void remoteVideoRef.current.play().catch(() => undefined);
+      }
+      setRemoteStream(new MediaStream(allTracks.getTracks()));
+      track.onunmute = () => {
+        if (disposed) return;
+        setRemoteStream(new MediaStream(allTracks.getTracks()));
+        if (track.kind === "audio" && remoteAudioRef.current) {
+          void remoteAudioRef.current.play().then(() => setPlaybackBlocked(false)).catch(() => setPlaybackBlocked(true));
+        }
+        if (track.kind === "video" && remoteVideoRef.current) {
+          void remoteVideoRef.current.play().catch(() => undefined);
+        }
       };
     };
     pc.onconnectionstatechange = () => {
@@ -217,12 +236,12 @@ export function CallPanel({ callRoomId, callType, nickname, peerId, isHost, onLe
   }, [localStream]);
   useEffect(() => {
     if (remoteVideoRef.current) {
-      remoteVideoRef.current.srcObject = remoteStream;
+      remoteVideoRef.current.srcObject = remoteVideoStreamRef.current;
       void remoteVideoRef.current.play().catch(() => undefined);
     }
     if (remoteAudioRef.current) {
-      remoteAudioRef.current.srcObject = remoteStream;
-      void remoteAudioRef.current.play().catch(() => undefined);
+      remoteAudioRef.current.srcObject = remoteAudioStreamRef.current;
+      void remoteAudioRef.current.play().then(() => setPlaybackBlocked(false)).catch(() => setPlaybackBlocked(true));
     }
   }, [remoteStream]);
 
@@ -248,7 +267,7 @@ export function CallPanel({ callRoomId, callType, nickname, peerId, isHost, onLe
       if (kind === "audio") setMicOn(true);
       else setCameraOn(true);
       // User interaction can unlock audible playback on mobile browsers.
-      if (remoteAudioRef.current) void remoteAudioRef.current.play().catch(() => undefined);
+      if (remoteAudioRef.current) void remoteAudioRef.current.play().then(() => setPlaybackBlocked(false)).catch(() => setPlaybackBlocked(true));
       if (remoteVideoRef.current) void remoteVideoRef.current.play().catch(() => undefined);
     } catch {
       setError(kind === "audio" ? "Mikrofon tidak dapat diaktifkan. Periksa izin browser." : "Kamera tidak dapat diaktifkan. Periksa izin browser.");
@@ -288,6 +307,12 @@ export function CallPanel({ callRoomId, callType, nickname, peerId, isHost, onLe
   };
 
   const remoteHasVideo = !!remoteStream?.getVideoTracks().length;
+  const remoteHasAudio = !!remoteStream?.getAudioTracks().length;
+  const unlockPlayback = async () => {
+    if (!remoteAudioRef.current) return;
+    try { await remoteAudioRef.current.play(); setPlaybackBlocked(false); }
+    catch { setPlaybackBlocked(true); }
+  };
 
   return <div className="call-backdrop">
     <section className="call-panel" role="dialog" aria-modal="true" aria-label="DrewMingle call">
@@ -305,6 +330,8 @@ export function CallPanel({ callRoomId, callType, nickname, peerId, isHost, onLe
           </div>
         : <div className="call-waiting">{connected ? "Panggilan tersambung. Aktifkan mikrofon untuk mulai berbicara." : "Menghubungkan ke teman. Pastikan keduanya memakai jaringan yang mendukung koneksi langsung."}</div>}
       <audio ref={remoteAudioRef} autoPlay playsInline />
+      {playbackBlocked && <button className="call-audio-unlock" onClick={() => void unlockPlayback()}>Tap untuk mengaktifkan suara teman</button>}
+      {callType === "video" && <p className="call-media-status">Audio teman: {remoteHasAudio ? "terdeteksi" : "menunggu"} · Video teman: {remoteHasVideo ? "terdeteksi" : "menunggu"}</p>}
       <div className="call-controls">
         <button className={micOn ? "active" : ""} onClick={() => void toggleMic()} disabled={!callReady}>{micOn ? <Mic size={16} /> : <MicOff size={16} />}{micOn ? "Mute" : "Unmute"}</button>
         {callType === "video" && <button className={cameraOn ? "active" : ""} onClick={() => void toggleCamera()} disabled={!callReady}>{cameraOn ? <Camera size={16} /> : <CameraOff size={16} />}{cameraOn ? "Camera off" : "Camera on"}</button>}
