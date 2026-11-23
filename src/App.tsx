@@ -2,13 +2,18 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import {
   ArrowUpRight, Globe2, Hash, MessageCircle, Send, ShieldCheck,
-  Users, Wifi, X, Flag, Sparkles, ChevronDown, CircleHelp, Moon, Sun, Reply, BellRing
+  Users, Wifi, X, Flag, Sparkles, ChevronDown, CircleHelp, Moon, Sun, Reply, BellRing, Phone, Video
 } from "lucide-react";
 import type { RealtimeChannel } from "@supabase/supabase-js";
 import { supabase, supabaseReady } from "./supabase";
+import { CallPanel } from "./CallPanel";
 
 type Country = { id: string; label: string; flag: string };
 type ChatMessage = { id: string; user_id: string; nickname: string; content: string; created_at: string; reply_to_id: string | null };
+type OnlineMember = { user_id: string; nickname: string };
+type CallType = "voice" | "video";
+type ActiveCall = { roomId: string; callType: CallType; hostId: string };
+type IncomingInvite = { id: string; room_id: string; inviter_id: string; callType: CallType };
 const countries: Country[] = [
   { id: "global", label: "Global", flag: "🌐" },
   { id: "id", label: "Indonesia", flag: "🇮🇩" },
@@ -40,6 +45,10 @@ export default function App() {
   const [uid, setUid] = useState("");
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [online, setOnline] = useState(0);
+  const [onlineMembers, setOnlineMembers] = useState<OnlineMember[]>([]);
+  const [activeCall, setActiveCall] = useState<ActiveCall | null>(null);
+  const [incomingInvite, setIncomingInvite] = useState<IncomingInvite | null>(null);
+  const [sendingInvite, setSendingInvite] = useState("");
   const [draft, setDraft] = useState("");
   const [connected, setConnected] = useState(false);
   const [notice, setNotice] = useState("");
@@ -98,6 +107,7 @@ export default function App() {
     setConnected(false);
     setMessages([]);
     setOnline(0);
+    setOnlineMembers([]);
 
     const loadMessages = async () => {
       const { data, error } = await client
@@ -140,11 +150,20 @@ export default function App() {
         }
       })
       .on("presence", { event: "sync" }, () => {
-        if (channel) setOnline(Object.keys(channel.presenceState()).length);
+        if (!channel) return;
+        const state = channel.presenceState<{ user_id?: string; nickname?: string }>();
+        setOnline(Object.keys(state).length);
+        const members = Object.entries(state).flatMap(([key, metas]) => {
+          const meta = metas[0];
+          const userId = meta?.user_id ?? key;
+          if (!userId || userId === uid) return [];
+          return [{ user_id: userId, nickname: meta?.nickname || "DrewMingle user" }];
+        });
+        setOnlineMembers(members.filter((member, index, all) => all.findIndex((item) => item.user_id === member.user_id) === index));
       })
       .subscribe(async (status) => {
         if (status === "SUBSCRIBED" && channel) {
-          await channel.track({ nickname, joined_at: new Date().toISOString() });
+          await channel.track({ user_id: uid, nickname, joined_at: new Date().toISOString() });
           if (active) setConnected(true);
         }
       });
@@ -154,6 +173,95 @@ export default function App() {
       if (channel && supabase) void client.removeChannel(channel);
     };
   }, [uid, activeRoom, nickname]);
+
+
+  useEffect(() => {
+    const client = supabase;
+    if (!client || !uid) return;
+    let active = true;
+    const showInvite = async (invite: { id: string; room_id: string; inviter_id: string }) => {
+      const { data: room } = await client.from("drewmingle_call_rooms")
+        .select("call_type,status,expires_at").eq("id", invite.room_id).maybeSingle();
+      if (!active || !room || room.status !== "active" || new Date(room.expires_at).getTime() < Date.now()) return;
+      setIncomingInvite({ ...invite, callType: room.call_type as CallType });
+    };
+    const channel = client.channel("drewmingle-call-invites:" + uid)
+      .on("postgres_changes", {
+        event: "INSERT", schema: "public", table: "drewmingle_call_invites",
+        filter: "invitee_id=eq." + uid,
+      }, (payload) => {
+        const invite = payload.new as { id: string; room_id: string; inviter_id: string; status: string };
+        if (invite.status === "pending") void showInvite(invite);
+      })
+      .on("postgres_changes", {
+        event: "UPDATE", schema: "public", table: "drewmingle_call_invites",
+        filter: "inviter_id=eq." + uid,
+      }, (payload) => {
+        const invite = payload.new as { status: string };
+        if (invite.status === "accepted") setNotice("Undangan diterima. Temanmu sudah masuk ke ruang panggilan.");
+        if (invite.status === "declined") setNotice("Undangan panggilan tidak diterima.");
+      })
+      .subscribe();
+    void client.from("drewmingle_call_invites")
+      .select("id,room_id,inviter_id,status")
+      .eq("invitee_id", uid).eq("status", "pending")
+      .order("created_at", { ascending: false }).limit(3)
+      .then(({ data }) => {
+        if (active && data?.[0]) void showInvite(data[0]);
+      });
+    return () => {
+      active = false;
+      void client.removeChannel(channel);
+    };
+  }, [uid]);
+
+  const inviteToCall = async (member: OnlineMember, callType: CallType) => {
+    if (!supabase || !uid || sendingInvite) return;
+    setSendingInvite(member.user_id);
+    const { data: room, error: roomError } = await supabase
+      .from("drewmingle_call_rooms")
+      .insert({ host_id: uid, call_type: callType })
+      .select("id").single();
+    if (roomError || !room) {
+      setNotice("Ruang panggilan gagal dibuat. Coba lagi.");
+      setSendingInvite("");
+      return;
+    }
+    const { error: inviteError } = await supabase.from("drewmingle_call_invites").insert({
+      room_id: room.id, inviter_id: uid, invitee_id: member.user_id, status: "pending",
+    });
+    if (inviteError) {
+      await supabase.from("drewmingle_call_rooms").update({ status: "ended" }).eq("id", room.id);
+      setNotice("Undangan gagal dikirim. Pengguna mungkin sudah tidak online.");
+    } else {
+      setActiveCall({ roomId: room.id, callType, hostId: uid });
+      setNotice("Undangan dikirim kepada " + member.nickname + ". Tunggu persetujuannya.");
+    }
+    setSendingInvite("");
+  };
+
+  const respondToInvite = async (accept: boolean) => {
+    if (!supabase || !incomingInvite) return;
+    const invite = incomingInvite;
+    const { error } = await supabase.from("drewmingle_call_invites").update({
+      status: accept ? "accepted" : "declined",
+      responded_at: new Date().toISOString(),
+    }).eq("id", invite.id).eq("invitee_id", uid);
+    if (error) {
+      setNotice("Respons undangan gagal dikirim. Coba muat ulang.");
+    } else if (accept) {
+      setActiveCall({ roomId: invite.room_id, callType: invite.callType, hostId: invite.inviter_id });
+    }
+    setIncomingInvite(null);
+  };
+
+  const leaveCall = async () => {
+    if (supabase && activeCall?.hostId === uid) {
+      await supabase.from("drewmingle_call_rooms").update({ status: "ended" })
+        .eq("id", activeCall.roomId).eq("host_id", uid);
+    }
+    setActiveCall(null);
+  };
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -258,6 +366,25 @@ export default function App() {
             <span className="member-count"><Users size={14} /> {online}</span>
           </div>
 
+
+          <div className="hangout-panel">
+            <div className="hangout-heading">
+              <div><strong>Hangout with someone online</strong><span>Undang orang yang kamu kenal dan percaya.</span></div>
+              <span className="hangout-count">{onlineMembers.length} online</span>
+            </div>
+            {onlineMembers.length ? <div className="hangout-members">
+              {onlineMembers.map((member) => <div className="hangout-member" key={member.user_id}>
+                <span className="member-avatar">{member.nickname.slice(0, 1).toUpperCase()}</span>
+                <strong>{member.nickname}</strong>
+                <div className="hangout-actions">
+                  <button disabled={!!sendingInvite || !!activeCall} onClick={() => void inviteToCall(member, "voice")} title="Invite to voice call"><Phone size={13} /> Voice</button>
+                  <button disabled={!!sendingInvite || !!activeCall} onClick={() => void inviteToCall(member, "video")} title="Invite to video call"><Video size={13} /> Video</button>
+                </div>
+              </div>)}
+            </div> : <p className="hangout-empty">Belum ada pengguna lain di ruang ini. Pengguna yang online di ruang yang sama akan muncul di sini.</p>}
+            <p className="hangout-safety">Panggilan hanya dimulai setelah undangan diterima. Mikrofon dan kamera nonaktif secara default.</p>
+          </div>
+
           <div className="message-area">
             {!supabaseReady ? (
               <div className="setup-state"><div className="setup-icon"><Sparkles size={22} /></div><h3>Chat belum diaktifkan</h3><p>Konfigurasi Supabase belum tersedia. Aplikasi membutuhkan URL proyek dan publishable key agar dapat terhubung.</p><span className="setup-tag">SUPABASE CONFIGURATION REQUIRED</span></div>
@@ -288,6 +415,20 @@ export default function App() {
           <AnimatePresence>{notice && <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} className="toast"><span>{notice}</span><button onClick={() => setNotice("")}><X size={14} /></button></motion.div>}</AnimatePresence>
         </section>
       </main>
+
+      {incomingInvite && <div className="call-backdrop">
+        <div className="invite-modal">
+          <div className="call-modal-icon">{incomingInvite.callType === "video" ? <Video size={22} /> : <Phone size={22} />}</div>
+          <span className="call-kicker">INCOMING INVITATION</span>
+          <h3>Someone invited you</h3>
+          <p>Undangan panggilan {incomingInvite.callType === "video" ? "video" : "suara"} dari pengguna DrewMingle. Terima hanya jika kamu mengenal dan memercayai orang tersebut.</p>
+          <div className="invite-actions">
+            <button className="invite-decline" onClick={() => void respondToInvite(false)}>Decline</button>
+            <button className="invite-accept" onClick={() => void respondToInvite(true)}>Accept invitation</button>
+          </div>
+        </div>
+      </div>}
+      {activeCall && <CallPanel callRoomId={activeCall.roomId} callType={activeCall.callType} nickname={nickname} onLeave={() => void leaveCall()} />}
       <footer className="footer"><span>© 2026 DrewMingle</span><span>Meet ideas, not expectations.</span><button onClick={() => setShowSafety(true)}><CircleHelp size={13} /> Safety guidelines</button></footer>
 
       <AnimatePresence>{showSafety && <motion.div className="modal-backdrop" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => setShowSafety(false)}><motion.div className="safety-modal" initial={{ opacity: 0, y: 14, scale: .98 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0, y: 10 }} onClick={(event) => event.stopPropagation()}><div className="modal-top"><span className="modal-icon"><ShieldCheck size={20} /></span><button className="icon-button" onClick={() => setShowSafety(false)}><X size={17} /></button></div><h3>Keep the conversation safe.</h3><p>DrewMingle adalah ruang obrolan publik berbasis topik, bukan tempat untuk membagikan informasi pribadi.</p><ul><li>Jangan bagikan nama lengkap, alamat, sekolah, nomor telepon, atau akun pribadi.</li><li>Jangan pindah ke percakapan privat dengan orang yang baru dikenal.</li><li>Laporkan pesan yang melecehkan, mengancam, atau meminta informasi pribadi.</li><li>Keluar dari ruang jika percakapan membuat Anda tidak nyaman.</li></ul><button className="modal-done" onClick={() => setShowSafety(false)}>I understand</button></motion.div></motion.div>}</AnimatePresence>
