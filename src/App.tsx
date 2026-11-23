@@ -232,7 +232,7 @@ export default function App() {
       .insert({ host_id: uid, call_type: callType })
       .select("id").single();
     if (roomError || !room) {
-      setNotice("Ruang panggilan gagal dibuat. Coba lagi.");
+      setNotice("Ruang panggilan gagal dibuat (" + (roomError?.code ?? "unknown") + "): " + (roomError?.message ?? "Coba lagi."));
       setSendingInvite("");
       return;
     }
@@ -241,7 +241,7 @@ export default function App() {
     });
     if (inviteError) {
       await supabase.from("drewmingle_call_rooms").update({ status: "ended" }).eq("id", room.id);
-      setNotice("Undangan gagal dikirim. Pengguna mungkin sudah tidak online.");
+      setNotice("Undangan gagal dikirim (" + inviteError.code + "): " + inviteError.message);
     } else {
       setActiveCall({ roomId: room.id, callType, hostId: uid, peerId: member.user_id });
       setNotice("Undangan dikirim kepada " + member.nickname + ". Tunggu persetujuannya.");
