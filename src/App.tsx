@@ -137,7 +137,7 @@ export default function App() {
       <header className="topbar">
         <a className="brand" href="#"><span className="brand-mark"><MessageCircle size={19} /></span><span>Drew<span className="brand-accent">Mingle</span></span></a>
         <div className="topbar-right">
-          <span className="status-pill"><i className={connected ? "status-dot live" : "status-dot"} />{connected ? "Connected" : "Connecting"}</span>
+          <span className="status-pill"><i className={connected ? "status-dot live" : "status-dot"} />{connected ? "Connected" : firebaseReady ? "Connecting" : "Setup needed"}</span>
           <button className="icon-button" onClick={() => setShowSafety(true)} aria-label="Safety information"><ShieldCheck size={18} /></button>
         </div>
       </header>
@@ -145,8 +145,8 @@ export default function App() {
       <main className="layout">
         <section className="intro">
           <div className="eyebrow"><span className="eyebrow-line" /> COMMUNITY CHAT, WITHOUT BORDERS</div>
-          <h1>Small talk.<br /><span>Big world.</span></h1>
-          <p className="intro-copy">Temukan percakapan baru, bertukar ide, dan belajar hal menarik dari komunitas lintas negara.</p>
+          <h1>Talk with<br /><span>the world.</span></h1>
+          <p className="intro-copy">Satu ruang publik untuk berbagi ide dan berbincang dengan komunitas dari berbagai negara.</p>
           <div className="intro-stats">
             <div><strong><Globe2 size={16} /> 8</strong><span>Regions</span></div>
             <div><strong><Users size={16} /> {online}</strong><span>In this room</span></div>
@@ -158,7 +158,7 @@ export default function App() {
         <section className="chat-card">
           <div className="chat-heading">
             <div><div className="chat-kicker">YOUR COMMUNITY</div><h2>Explore a room</h2></div>
-            <span className="room-live"><span /> LIVE ROOM</span>
+            <span className="room-live"><span /> PUBLIC ROOM</span>
           </div>
 
           <div className="filters">
@@ -182,7 +182,7 @@ export default function App() {
 
           <div className="message-area">
             {!firebaseReady ? (
-              <div className="setup-state"><div className="setup-icon"><Sparkles size={22} /></div><h3>One quick setup left</h3><p>Firebase belum dihubungkan. Tambahkan konfigurasi Firebase agar ruang chat dapat menerima pesan secara langsung.</p><span className="setup-tag">WAITING FOR FIREBASE CONFIG</span></div>
+              <div className="setup-state"><div className="setup-icon"><Sparkles size={22} /></div><h3>Chat belum diaktifkan</h3><p>Ruang Global sudah tersedia di aplikasi, tetapi layanan chat belum tersambung. Firebase perlu dikonfigurasi sebelum pesan dapat dikirim dan diterima secara langsung.</p><span className="setup-tag">FIREBASE CONFIGURATION REQUIRED</span></div>
             ) : !messages.length ? (
               <div className="empty-state"><div className="empty-orbit"><MessageCircle size={23} /></div><h3>Start the conversation</h3><p>Belum ada pesan di sini. Mulailah dengan sapaan sederhana.</p><span className="icebreaker" onClick={() => setDraft("Hi! What are you interested in lately?")}>“Hi! What are you interested in lately?” <ArrowUpRight size={13} /></span></div>
             ) : (
