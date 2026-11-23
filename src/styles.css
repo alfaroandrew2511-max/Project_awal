@@ -170,3 +170,58 @@ button{cursor:pointer}
 .reply-composer span{font-size:9px;color:#737d8b;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .reply-composer button{border:0;background:transparent;color:inherit;display:grid;place-items:center}
 @media(max-width:700px){.nickname-input{width:125px}}
+
+/* Invite-only voice and video hangouts */
+.hangout-panel{margin:14px 25px 0;padding:12px;border:1px solid #e8eaf0;border-radius:10px;background:#fafbfc}
+.hangout-heading{display:flex;align-items:center;justify-content:space-between;gap:10px}
+.hangout-heading>div{display:grid;gap:4px}
+.hangout-heading strong{font-size:11px;color:#303640}
+.hangout-heading span,.hangout-count{font-size:9px;color:#828a95}
+.hangout-count{white-space:nowrap}
+.hangout-members{display:grid;gap:7px;margin-top:10px;max-height:130px;overflow:auto}
+.hangout-member{display:flex;align-items:center;gap:8px;min-width:0}
+.member-avatar{width:23px;height:23px;border-radius:50%;display:grid;place-items:center;background:#e8eaff;color:#4657d5;font-size:9px;font-weight:700;flex-shrink:0}
+.hangout-member>strong{font-size:10px;color:#4b5360;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.hangout-actions{display:flex;gap:5px}
+.hangout-actions button{display:flex;align-items:center;gap:4px;border:1px solid #e0e4ec;border-radius:6px;background:#fff;color:#566170;padding:5px 7px;font-size:9px}
+.hangout-actions button:hover:not(:disabled){border-color:#bfc7f5;color:#4657d5}
+.hangout-actions button:disabled{opacity:.45;cursor:not-allowed}
+.hangout-empty,.hangout-safety{font-size:9px;line-height:1.6;color:#858d98;margin:9px 0 0}
+.hangout-safety{color:#78828f}
+.call-backdrop{position:fixed;inset:0;z-index:20;background:rgba(15,20,29,.68);backdrop-filter:blur(5px);display:grid;place-items:center;padding:16px}
+.invite-modal{width:min(410px,100%);padding:25px;border-radius:16px;background:#fff;border:1px solid #e5e7eb;box-shadow:0 24px 80px rgba(0,0,0,.25)}
+.call-modal-icon{width:45px;height:45px;border-radius:13px;display:grid;place-items:center;background:#eef0ff;color:#4657d5;margin-bottom:15px}
+.call-kicker{font-size:9px;font-weight:750;letter-spacing:1.2px;color:#818997}
+.invite-modal h3{font-size:22px;letter-spacing:-.6px;margin:8px 0;color:#252a32}
+.invite-modal p{font-size:12px;line-height:1.7;color:#69717d}
+.invite-actions{display:flex;gap:9px;margin-top:20px}
+.invite-actions button{height:40px;border-radius:8px;padding:0 14px;font-size:11px;font-weight:650}
+.invite-decline{flex:1;border:1px solid #e2e5eb;background:#fff;color:#5c6572}
+.invite-accept{flex:1.5;border:0;background:#4657d5;color:#fff}
+.call-panel{width:min(900px,100%);max-height:min(90vh,760px);overflow:auto;padding:20px;border-radius:16px;background:#171e28;border:1px solid #354052;color:#edf1f7;box-shadow:0 25px 90px rgba(0,0,0,.35)}
+.call-panel-head{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:16px}
+.call-panel-head h2{font-size:18px;margin:0 0 4px;letter-spacing:-.3px}
+.call-panel-head p{font-size:10px;color:#a8b2c0;margin:0}
+.call-state{font-size:9px;color:#b9c3d0;padding:6px 9px;border:1px solid #394657;border-radius:20px}
+.call-video-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:10px}
+.call-video-tile{min-height:190px;position:relative;overflow:hidden;border-radius:12px;background:#252f3c;display:grid;place-items:center}
+.call-video-tile video{width:100%;height:100%;min-height:190px;object-fit:cover}
+.call-video-name{position:absolute;left:10px;bottom:9px;padding:5px 8px;border-radius:6px;background:rgba(0,0,0,.55);color:#fff;font-size:10px}
+.call-waiting{min-height:180px;display:grid;place-items:center;text-align:center;color:#aab4c2;font-size:12px;padding:20px}
+.call-controls{display:flex;justify-content:center;flex-wrap:wrap;gap:9px;margin-top:18px}
+.call-controls button{height:42px;min-width:92px;display:flex;align-items:center;justify-content:center;gap:7px;border:1px solid #465365;border-radius:9px;background:#263241;color:#edf1f7;font-size:11px}
+.call-controls button.active{background:#4657d5;border-color:#6473e5}
+.call-controls button.end-call{background:#b63f4b;border-color:#b63f4b;color:#fff}
+.call-controls button:disabled{opacity:.4;cursor:not-allowed}
+.call-warning{font-size:10px;line-height:1.6;text-align:center;color:#a8b2c0;margin:14px auto 0;max-width:520px}
+.call-error{font-size:11px;color:#ffc4c4;text-align:center;padding:20px}
+.call-panel audio{display:none}
+.app-shell[data-theme="dark"] .hangout-panel{background:#171e28;border-color:#303a49}
+.app-shell[data-theme="dark"] .hangout-heading strong,.app-shell[data-theme="dark"] .hangout-member>strong{color:#edf1f7}
+.app-shell[data-theme="dark"] .hangout-actions button{background:#202a37;border-color:#3b4657;color:#d8e0eb}
+.app-shell[data-theme="dark"] .hangout-heading span,.app-shell[data-theme="dark"] .hangout-empty,.app-shell[data-theme="dark"] .hangout-safety{color:#a4afbd}
+.app-shell[data-theme="dark"] .invite-modal{background:#1c232d;border-color:#354052}
+.app-shell[data-theme="dark"] .invite-modal h3{color:#f0f3f8}
+.app-shell[data-theme="dark"] .invite-modal p{color:#b7c0cd}
+.app-shell[data-theme="dark"] .invite-decline{background:#222c39;border-color:#3a4657;color:#dce3ed}
+@media(max-width:700px){.hangout-panel{margin:12px 16px 0}.hangout-actions button{padding:6px}.call-panel{padding:14px}.call-video-grid{grid-template-columns:1fr}.call-video-tile,.call-video-tile video{min-height:210px}}
